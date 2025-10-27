@@ -1,53 +1,52 @@
-use anyhow::{Context, Result};
-use serde::Deserialize;
-use std::process::Command;
-
-#[derive(Debug, Clone, Deserialize)]
-struct HyprMonitor {
-    pub id: i32,
-    pub name: String,
-    pub description: String,
-    pub width: i32,
-    pub height: i32,
-}
+use crate::hyprland_ipc::{HyprlandIPC, Monitor as HyprMonitor};
+use anyhow::Result;
+use tracing::warn;
 
 #[derive(Clone)]
-pub struct MonitorManager;
+pub struct MonitorManager {
+    ipc: Option<HyprlandIPC>,
+}
 
 impl MonitorManager {
     pub fn new() -> Self {
-        Self
+        let ipc = match HyprlandIPC::new() {
+            Ok(ipc) => Some(ipc),
+            Err(e) => {
+                warn!("Failed to initialize Hyprland IPC: {}. Monitor detection disabled.", e);
+                None
+            }
+        };
+
+        Self { ipc }
     }
 
-    pub fn get_monitors(&self) -> Result<Vec<String>> {
-        let output = Command::new("hyprctl")
-            .args(&["monitors", "-j"])
-            .output()
-            .context("Failed to execute hyprctl")?;
-
-        if !output.status.success() {
-            anyhow::bail!("hyprctl command failed");
+    pub async fn get_monitors(&self) -> Result<Vec<String>> {
+        if let Some(ipc) = &self.ipc {
+            let monitors = ipc.get_monitors().await?;
+            Ok(monitors.into_iter().map(|m| m.name).collect())
+        } else {
+            anyhow::bail!("Hyprland IPC not available")
         }
-
-        let monitors: Vec<HyprMonitor> = serde_json::from_slice(&output.stdout)
-            .context("Failed to parse hyprctl output")?;
-
-        Ok(monitors.into_iter().map(|m| m.name).collect())
     }
 
-    pub fn get_monitor_details(&self) -> Result<Vec<HyprMonitor>> {
-        let output = Command::new("hyprctl")
-            .args(&["monitors", "-j"])
-            .output()
-            .context("Failed to execute hyprctl")?;
-
-        if !output.status.success() {
-            anyhow::bail!("hyprctl command failed");
+    pub async fn get_monitor_details(&self) -> Result<Vec<HyprMonitor>> {
+        if let Some(ipc) = &self.ipc {
+            ipc.get_monitors().await
+        } else {
+            anyhow::bail!("Hyprland IPC not available")
         }
+    }
 
-        let monitors: Vec<HyprMonitor> = serde_json::from_slice(&output.stdout)
-            .context("Failed to parse hyprctl output")?;
-
-        Ok(monitors)
+    pub async fn get_focused_monitor(&self) -> Result<String> {
+        if let Some(ipc) = &self.ipc {
+            let monitors = ipc.get_monitors().await?;
+            monitors
+                .into_iter()
+                .find(|m| m.focused)
+                .map(|m| m.name)
+                .ok_or_else(|| anyhow::anyhow!("No focused monitor found"))
+        } else {
+            anyhow::bail!("Hyprland IPC not available")
+        }
     }
 }
