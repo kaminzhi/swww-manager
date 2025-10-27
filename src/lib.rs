@@ -6,12 +6,16 @@ pub mod protocol;
 pub mod hyprland_events;
 pub mod hyprland_ipc;
 pub mod notify;
+pub mod server;
+pub mod client;
 
 pub use config::Config;
 pub use monitor::MonitorManager;
 pub use wallpaper::WallpaperManager;
 pub use profile::ProfileManager;
 pub use hyprland_ipc::HyprlandIPC;
+pub use server::Server;
+pub use client::Client;
 
 use anyhow::Result;
 
