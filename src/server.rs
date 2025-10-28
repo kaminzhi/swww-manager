@@ -102,6 +102,8 @@ impl Server {
             }
         };
 
+        let mut last_config_mtime: Option<std::time::SystemTime> = None;
+
         loop {
             tokio::select! {
                 result = listener.accept() => {
@@ -121,7 +123,10 @@ impl Server {
                         }
                     }
                 }
-                _ = tokio::signal::ctrl_c() => {
+                _ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {
+                    self.check_and_reload_config(&mut last_config_mtime).await;
+                }
+                , _ = tokio::signal::ctrl_c() => {
                     info!("Received shutdown signal");
                     break;
                 }
@@ -131,6 +136,54 @@ impl Server {
         info!("Shutting down server...");
         
         Ok(())
+    }
+
+    async fn check_and_reload_config(&mut self, last_config_mtime: &mut Option<std::time::SystemTime>) {
+        let Some(path_str) = crate::config::Config::default_path() else { return };
+        let path = std::path::PathBuf::from(path_str);
+        let Ok(meta) = std::fs::metadata(&path) else { return };
+        let Ok(mtime) = meta.modified() else { return };
+
+        if last_config_mtime.map(|t| t >= mtime).unwrap_or(false) {
+            return;
+        }
+
+        let new_config = match Config::load(None) {
+            Ok(c) => c,
+            Err(e) => { warn!("Failed to reload updated config: {}", e); return },
+        };
+
+        info!("Config changed on disk, reloading");
+        self.config = new_config.clone();
+        self.profile_manager.update_config(new_config);
+
+        if let Ok(profile) = self.profile_manager.current_profile() {
+            if let Err(e) = self.wallpaper_manager.refresh_cache(profile) {
+                warn!("Failed to refresh wallpaper cache: {}", e);
+            }
+        }
+
+        match self.monitor_manager.get_stable_monitors().await {
+            Ok(monitors) => {
+                info!("Running detect after config reload: {:?}", monitors);
+                match self.profile_manager.detect_profile(&monitors) {
+                    Ok(Some(profile)) if profile != self.config.current_profile => {
+                        if let Err(e) = self.switch_profile(&profile).await {
+                            warn!("Failed to switch profile after config reload: {}", e);
+                        }
+                    }
+                    Ok(_) => {
+                        if let Err(e) = self.switch_wallpaper().await {
+                            warn!("Failed to refresh wallpaper after config reload: {}", e);
+                        }
+                    }
+                    Err(e) => warn!("Detect error after config reload: {}", e),
+                }
+            }
+            Err(e) => warn!("Failed to read monitors after config reload: {}", e),
+        }
+
+        *last_config_mtime = Some(mtime);
     }
 
     async fn handle_client(&mut self, mut stream: UnixStream) -> Result<()> {

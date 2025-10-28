@@ -26,7 +26,6 @@ impl ProfileManager {
         }
 
         self.config.current_profile = name.to_string();
-        self.config.save(None)?;
         Ok(())
     }
 
