@@ -7,7 +7,7 @@ After=swww-manager.socket
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/swww-manager serve
-StandardInput=socket
+Sockets=swww-manager.socket
 StandardOutput=journal
 StandardError=journal
 

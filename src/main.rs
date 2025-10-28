@@ -227,35 +227,38 @@ async fn run_event_monitor() -> Result<()> {
     use std::sync::Arc;
     use std::time::{Duration, Instant};
     use tokio::sync::Mutex;
+    use tokio::task::JoinHandle;
 
-    let last_event = Arc::new(Mutex::new(Instant::now()));
-    let debounce_duration = Duration::from_secs(2);
+    let scheduled_task: Arc<Mutex<Option<JoinHandle<()>>>> = Arc::new(Mutex::new(None));
+    let debounce_delay = Duration::from_millis(900);
     
     monitor_events(move |event| {
-        let last_event = Arc::clone(&last_event);
+        let scheduled_task = Arc::clone(&scheduled_task);
+        let debounce_delay = debounce_delay.clone();
         async move {
             match event {
                 HyprlandEvent::MonitorAdded { .. } | HyprlandEvent::MonitorRemoved { .. }=> {
-                    let mut last_event_lock = last_event.lock().await;
-                    let now = Instant::now();
-                    if now.duration_since(*last_event_lock) >= debounce_duration {
-                        *last_event_lock = now;
-                        drop(last_event_lock);
-                        let event_type = match event {
-                            HyprlandEvent::MonitorAdded { .. } => "added",
-                            HyprlandEvent::MonitorRemoved { .. } => "removed",
-                            _ => unreachable!(),
-                        };
+                    let event_type = match event {
+                        HyprlandEvent::MonitorAdded { .. } => "added",
+                        HyprlandEvent::MonitorRemoved { .. } => "removed",
+                        _ => unreachable!(),
+                    };
+                    info!("Monitor: {} (debouncing)", event_type);
 
-                        info!("Monitor: {}", event_type);
-                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    if let Some(handle) = scheduled_task.lock().await.take() {
+                        handle.abort();
+                    }
 
+                    let handle = tokio::spawn(async move {
+                        tokio::time::sleep(debounce_delay).await;
                         if let Ok(mut client) = Client::connect().await {
                             if let Err(e) = client.detect_and_switch_profile().await {
-                                tracing::warn!("Failed to switch profile after monitor {}: {}", event_type, e);
+                                tracing::warn!("Failed to switch profile after monitor change: {}", e);
                             }
                         }
-                    }
+                    });
+
+                    *scheduled_task.lock().await = Some(handle);
                 }
                 _ => {}
             }

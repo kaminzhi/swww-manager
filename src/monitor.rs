@@ -23,7 +23,11 @@ impl MonitorManager {
     pub async fn get_monitors(&self) -> Result<Vec<String>> {
         if let Some(ipc) = &self.ipc {
             let monitors = ipc.get_monitors().await?;
-            Ok(monitors.into_iter().map(|m| m.name).collect())
+            Ok(monitors
+                .into_iter()
+                .filter(|m| m.dpmsStatus && m.width > 0 && m.height > 0)
+                .map(|m| m.name)
+                .collect())
         } else {
             anyhow::bail!("Hyprland IPC not available")
         }
@@ -31,7 +35,11 @@ impl MonitorManager {
 
     pub async fn get_monitor_details(&self) -> Result<Vec<HyprMonitor>> {
         if let Some(ipc) = &self.ipc {
-            ipc.get_monitors().await
+            let monitors = ipc.get_monitors().await?;
+            Ok(monitors
+                .into_iter()
+                .filter(|m| m.dpmsStatus && m.width > 0 && m.height > 0)
+                .collect())
         } else {
             anyhow::bail!("Hyprland IPC not available")
         }
@@ -48,5 +56,38 @@ impl MonitorManager {
         } else {
             anyhow::bail!("Hyprland IPC not available")
         }
+    }
+    
+    pub async fn get_stable_monitors(&self) -> Result<Vec<String>> {
+        use tokio::time::{sleep, Duration, Instant};
+        let total = Duration::from_millis(1200);
+        let step = Duration::from_millis(200);
+        let required_same = 3usize;
+
+        let start = Instant::now();
+        let mut last: Option<Vec<String>> = None;
+        let mut same = 0usize;
+
+        while start.elapsed() < total {
+            let mut current = self.get_monitors().await.unwrap_or_default();
+            current.sort();
+            if let Some(prev) = &last {
+                if prev == &current {
+                    same += 1;
+                    if same >= required_same {
+                        return Ok(current);
+                    }
+                } else {
+                    same = 1;
+                    last = Some(current);
+                }
+            } else {
+                same = 1;
+                last = Some(current);
+            }
+            sleep(step).await;
+        }
+
+        Ok(last.unwrap_or_default())
     }
 }

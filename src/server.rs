@@ -35,43 +35,75 @@ impl Server {
     }
 
     pub async fn run(mut self) -> Result<()> {
-        let socket_path = Self::socket_path();
+        let listener = unsafe {
+            let listen_pid = std::env::var("LISTEN_PID").ok();
+            let listen_fds = std::env::var("LISTEN_FDS").ok();
 
-        if socket_path.exists() {
-            use std::io::Write;
-        
-            warn!("\nWARNING: Socket already exists at {:?}", socket_path);
-            warn!("Systemd socket service may be running.");
-            warn!("Stop systemd first:");
-            warn!("  systemctl --user stop swww-manager.socket");
-            warn!("  systemctl --user stop swww-manager.service");
-        }
-    
+            if let (Some(pid_str), Some(fds_str)) = (listen_pid, listen_fds) {
+                if pid_str.parse::<u32>().ok() == Some(std::process::id()) {
+                    if let Ok(nfds) = fds_str.parse::<i32>() {
+                        if nfds > 0 {
+                            use std::os::unix::io::FromRawFd;
+                            let raw_fd = 3;
+                            let std_listener = std::os::unix::net::UnixListener::from_raw_fd(raw_fd);
+                            if let Err(e) = std_listener.set_nonblocking(true) {
+                                error!("Failed to set nonblocking on systemd socket: {}", e);
+                            }
+                            match UnixListener::from_std(std_listener) {
+                                Ok(l) => {
+                                    info!("Using systemd socket activation (fd=3)");
+                                    Some(l)
+                                }
+                                Err(e) => {
+                                    error!("Failed to adopt systemd socket: {}", e);
+                                    None
+                                }
+                            }
+                        } else { None }
+                    } else { None }
+                } else { None }
+            } else { None }
+        };
 
-        // Remove old socket if exists
-        if socket_path.exists() {
-            std::fs::remove_file(&socket_path)
-                .with_context(|| format!("Failed to remove old socket: {:?}", socket_path))?;
-        }
+        let listener = match listener {
+            Some(l) => l,
+            None => {
+                let socket_path = Self::socket_path();
 
-        // Create socket directory
-        if let Some(parent) = socket_path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create socket directory: {:?}", parent))?;
-        }
+                if socket_path.exists() {
+                    warn!("\nWARNING: Socket already exists at {:?}", socket_path);
+                    warn!("Systemd socket service may be running.");
+                    warn!("Stop systemd first:");
+                    warn!("  systemctl --user stop swww-manager.socket");
+                    warn!("  systemctl --user stop swww-manager.service");
+                }
 
-        let listener = UnixListener::bind(&socket_path)
-            .with_context(|| format!("Failed to bind socket at {:?}", socket_path))?;
-        
-        info!("Socket server listening at {:?}", socket_path);
-        info!("Server ready to accept connections");
+                if socket_path.exists() {
+                    std::fs::remove_file(&socket_path)
+                        .with_context(|| format!("Failed to remove old socket: {:?}", socket_path))?;
+                }
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(0o600);
-            std::fs::set_permissions(&socket_path, perms)?;
-        }
+                if let Some(parent) = socket_path.parent() {
+                    std::fs::create_dir_all(parent)
+                        .with_context(|| format!("Failed to create socket directory: {:?}", parent))?;
+                }
+
+                let listener = UnixListener::bind(&socket_path)
+                    .with_context(|| format!("Failed to bind socket at {:?}", socket_path))?;
+                
+                info!("Socket server listening at {:?}", socket_path);
+                info!("Server ready to accept connections");
+
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let perms = std::fs::Permissions::from_mode(0o600);
+                    std::fs::set_permissions(&socket_path, perms)?;
+                }
+
+                listener
+            }
+        };
 
         loop {
             tokio::select! {
@@ -100,7 +132,6 @@ impl Server {
         }
 
         info!("Shutting down server...");
-        let _ = std::fs::remove_file(&socket_path);
         
         Ok(())
     }
@@ -194,7 +225,7 @@ impl Server {
             }
             
             Request::DetectAndSwitchProfile => {
-                let monitors = match self.monitor_manager.get_monitors().await {
+                let monitors = match self.monitor_manager.get_stable_monitors().await {
                     Ok(m) => m,
                     Err(e) => {
                         error!("Failed to get monitors: {}", e);
@@ -221,8 +252,25 @@ impl Server {
                                 message: format!("Auto-switched to profile: {}", profile) 
                             }
                         } else {
-                            Response::Success { 
-                                message: format!("Already using optimal profile: {}", profile)
+                            match self.switch_wallpaper().await {
+                                Ok(path) => {
+                                    let filename = std::path::Path::new(&path)
+                                        .file_name()
+                                        .and_then(|n| n.to_str())
+                                        .unwrap_or(&path);
+                                    Response::Success {
+                                        message: format!(
+                                            "Already using optimal profile: {} (wallpaper refreshed: {})",
+                                            profile, filename
+                                        ),
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to refresh wallpaper: {}", e);
+                                    Response::Error {
+                                        message: format!("Failed to refresh wallpaper: {}", e),
+                                    }
+                                }
                             }
                         }
                     }
