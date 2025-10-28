@@ -1,0 +1,11 @@
+[Unit]
+Description=SWWW Manager IPC Socket
+Documentation=https://github.com/kaminzhi/swww-manager
+
+[Socket]
+ListenStream=%t/swww-manager.sock
+SocketMode=0600
+Accept=false
+
+[Install]
+WantedBy=sockets.target

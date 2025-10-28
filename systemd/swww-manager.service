@@ -1,0 +1,28 @@
+[Unit]
+Description=SWWW Manager Service Instance
+Documentation=https://github.com/kaminzhi/swww-manager
+Requires=swww-manager.socket
+After=swww-manager.socket
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/swww-manager serve
+StandardInput=socket
+StandardOutput=journal
+StandardError=journal
+
+# Environment
+Environment="RUST_LOG=info"
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+# Security
+PrivateTmp=true
+#ProtectSystem=strict
+#ProtectHome=read-only
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

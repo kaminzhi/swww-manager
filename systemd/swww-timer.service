@@ -1,0 +1,17 @@
+[Unit]
+Description=SWWW Manager Auto-Switch
+Documentation=https://github.com/kaminzhi/swww-manager
+
+Requires=swww-manager.socket
+After=swww-manager.socket
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/swww-manager switch
+
+# Security
+PrivateTmp=true
+#ProtectSystem=strict
+#ProtectHome=read-only
+NoNewPrivileges=true
+
