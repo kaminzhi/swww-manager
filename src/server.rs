@@ -71,16 +71,13 @@ impl Server {
                 let socket_path = Self::socket_path();
 
                 if socket_path.exists() {
-                    warn!("\nWARNING: Socket already exists at {:?}", socket_path);
-                    warn!("Systemd socket service may be running.");
-                    warn!("Stop systemd first:");
-                    warn!("  systemctl --user stop swww-manager.socket");
-                    warn!("  systemctl --user stop swww-manager.service");
-                }
-
-                if socket_path.exists() {
-                    std::fs::remove_file(&socket_path)
-                        .with_context(|| format!("Failed to remove old socket: {:?}", socket_path))?;
+                    anyhow::bail!(
+                        "Socket already exists at {:?}. Refusing to start.\n\
+                         If you want to run in foreground, stop systemd first:\n\
+                         	 systemctl --user stop swww-manager.socket\n\
+                         	 systemctl --user stop swww-manager.service",
+                        socket_path
+                    );
                 }
 
                 if let Some(parent) = socket_path.parent() {
