@@ -12,11 +12,32 @@ pub struct Client {
 impl Client {
     pub async fn connect() -> Result<Self> {
         let socket_path = Self::socket_path();
-        
-        let stream = UnixStream::connect(&socket_path)
-            .await
-            .context("Failed to connect to socket. Is the service running?\n\
-                     Try: systemctl --user start swww-manager.socket")?;
+        let stream = UnixStream::connect(&socket_path).await.map_err(|_e| {
+            use std::process::Command;
+            let systemd_unit = Command::new("systemctl")
+                .args(["--user", "is-enabled", "swww-manager.socket"])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            let is_systemd = std::env::var("LISTEN_FDS").is_ok() || systemd_unit;
+            let stale_exists = socket_path.exists();
+            let has_fg = Command::new("pgrep")
+                .args(["-x", "swww-manager"]).output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).contains("serve"))
+                .unwrap_or(false);
+            let msg = match true {
+                _ if is_systemd =>
+                    "Failed to connect to socket. Is the server running?\n- If you use systemd: try 'systemctl --user start swww-manager.socket'\n".to_owned(),
+                _ if stale_exists && !has_fg =>
+                    format!("Failed to connect to socket.\n- Stale socket file: rm -f {}\n- Start foreground server: swww-manager serve\n", socket_path.display()),
+                _ if stale_exists =>
+                    format!("Failed to connect to socket.\n- Stale socket file: rm -f {}\n", socket_path.display()),
+                _ if !has_fg =>
+                    "Failed to connect to socket.\n- Start foreground server: swww-manager serve\n".to_owned(),
+                _ => "Failed to connect to socket. Is the server running?\n".to_owned()
+            };
+            anyhow::anyhow!("{}", msg)
+        })?;
         
         Ok(Self { stream })
     }

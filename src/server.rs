@@ -38,31 +38,28 @@ impl Server {
         let listener = unsafe {
             let listen_pid = std::env::var("LISTEN_PID").ok();
             let listen_fds = std::env::var("LISTEN_FDS").ok();
-
-            if let (Some(pid_str), Some(fds_str)) = (listen_pid, listen_fds) {
-                if pid_str.parse::<u32>().ok() == Some(std::process::id()) {
-                    if let Ok(nfds) = fds_str.parse::<i32>() {
-                        if nfds > 0 {
-                            use std::os::unix::io::FromRawFd;
-                            let raw_fd = 3;
-                            let std_listener = std::os::unix::net::UnixListener::from_raw_fd(raw_fd);
-                            if let Err(e) = std_listener.set_nonblocking(true) {
-                                error!("Failed to set nonblocking on systemd socket: {}", e);
+            match (listen_pid.as_deref(), listen_fds.as_deref()) {
+                (Some(pid_str), Some(fds_str)) => match (pid_str.parse::<u32>().ok(), fds_str.parse::<i32>().ok()) {
+                    (Some(pid), Some(nfds)) if pid == std::process::id() && nfds > 0 => {
+                        use std::os::unix::io::FromRawFd;
+                        let raw_fd = 3;
+                        let std_listener = std::os::unix::net::UnixListener::from_raw_fd(raw_fd);
+                        let _ = std_listener.set_nonblocking(true).map_err(|e| error!("Failed to set nonblocking: {}", e));
+                        match UnixListener::from_std(std_listener) {
+                            Ok(l) => {
+                                info!("Using systemd socket activation (fd=3)");
+                                Some(l)
                             }
-                            match UnixListener::from_std(std_listener) {
-                                Ok(l) => {
-                                    info!("Using systemd socket activation (fd=3)");
-                                    Some(l)
-                                }
-                                Err(e) => {
-                                    error!("Failed to adopt systemd socket: {}", e);
-                                    None
-                                }
+                            Err(e) => {
+                                error!("Failed to adopt systemd socket: {}", e);
+                                None
                             }
-                        } else { None }
-                    } else { None }
-                } else { None }
-            } else { None }
+                        }
+                    }
+                    _ => None,
+                },
+                _ => None,
+            }
         };
 
         let listener = match listener {
@@ -71,13 +68,23 @@ impl Server {
                 let socket_path = Self::socket_path();
 
                 if socket_path.exists() {
-                    anyhow::bail!(
-                        "Socket already exists at {:?}. Refusing to start.\n\
-                         If you want to run in foreground, stop systemd first:\n\
-                         	 systemctl --user stop swww-manager.socket\n\
-                         	 systemctl --user stop swww-manager.service",
-                        socket_path
-                    );
+                    // Try connect: success => someone owns it; failure => likely stale file
+                    match std::os::unix::net::UnixStream::connect(&socket_path) {
+                        Ok(_) => {
+                            anyhow::bail!(
+                                "Socket already exists at {:?}. Refusing to start.\n\
+                                 If you want to run in foreground, stop systemd first:\n\
+                                 \t systemctl --user stop swww-manager.socket\n\
+                                 \t systemctl --user stop swww-manager.service",
+                                socket_path
+                            );
+                        }
+                        Err(_) => {
+                            warn!("Stale socket detected at {:?}, removing...", socket_path);
+                            std::fs::remove_file(&socket_path)
+                                .with_context(|| format!("Failed to remove stale socket: {:?}", socket_path))?;
+                        }
+                    }
                 }
 
                 if let Some(parent) = socket_path.parent() {
