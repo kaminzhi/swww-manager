@@ -2,9 +2,9 @@ use anyhow::{Context, Result};
 use tokio::net::UnixStream;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tracing::{info, warn, error};
-use std::path::Pathbuf;
+use std::path::PathBuf;
 
-#[derive(Debug, clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum HyprlandEvent {
     MonitorAdded { id: String, name: String, description: String },
     MonitorRemoved { id: String, name: String, description: String },
@@ -13,13 +13,13 @@ pub enum HyprlandEvent {
     Other(String),
 }
 
-pub struct HyprlandEvent {
+pub struct EventListener {
     reader: BufReader<UnixStream>,
 }
 
-impl HyprlandEvent {
-    pub async fn connect() -> Result<self> {
-        let socket_patrh = Self::socket2_path()?;
+impl EventListener {
+    pub async fn connect() -> Result<Self> {
+        let socket_path = Self::socket2_path()?;
         let stream = UnixStream::connect(&socket_path)
             .await
             .context("Failed to connect socket")?;
@@ -32,20 +32,20 @@ impl HyprlandEvent {
 
     }
 
-    pub async fn next_event (&mut self) -> Result<HyprlandEvent> {
+    pub async fn next_event (&mut self) -> Result<Option<HyprlandEvent>> {
         let mut line = String::new();
 
         match self.reader.read_line(&mut line).await {
-            Ok(0) => OK(None),
+            Ok(0) => Ok(None),
             Ok(_) => {
-                let event = Self::parse_event(&line);
+                let event = Self::parse_event(&line)?;
                 Ok(Some(event))
             },
-            Err(e) => Err(anyhow::anyhow!("Failed to read from socket: {}", e.into())),
+            Err(e) => Err(anyhow::anyhow!("Failed to read from socket: {}", e)),
         }
     }
 
-    fn parse_eventfn parse_event(line: &str) -> Result<HyprlandEvent> {
+    fn parse_event(line: &str) -> Result<HyprlandEvent> {
         let line = line.trim();
         
         if let Some((event_type, data)) = line.split_once(">>") {

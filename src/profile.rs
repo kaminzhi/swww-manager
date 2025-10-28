@@ -37,8 +37,8 @@ impl ProfileManager {
         let mut best_score = 0;
 
         for (name, profile) in &self.config.profiles {
-            // Wildcard profile is fallback
-            if profile.monitors.contains(&"*".to_string()) {
+
+            if profile.monitors.len() == 1 && profile.monitors.contains(&"*".to_string()) {
                 if best_match.is_none() {
                     best_match = Some(name.clone());
                 }
@@ -46,13 +46,17 @@ impl ProfileManager {
             }
 
             let profile_monitors: HashSet<_> = profile.monitors.iter().collect();
-            
-            // Calculate match score
-            let score = monitor_set.intersection(&profile_monitors).count();
-            
-            if score > best_score && score > 0 {
-                best_score = score;
-                best_match = Some(name.clone());
+
+            if monitor_set.len() != profile_monitors.len() {
+                continue;
+            }
+            if monitor_set == profile_monitors {
+                let score = monitor_set.len();
+                
+                if score > best_score {
+                    best_score = score;
+                    best_match = Some(name.clone());
+                }
             }
         }
 
@@ -100,6 +104,8 @@ impl ProfileManager {
                     monitors: profile.monitors.clone(),
                     wallpaper_count,
                     is_current: name == &self.config.current_profile,
+                    transition: Some(profile.transition.clone()),
+                    transition_duration: Some(profile.transition_duration),
                 }
             })
             .collect()

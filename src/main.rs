@@ -1,4 +1,7 @@
 use tracing_subscriber;
+use tracing::Level;
+use tracing::info;
+use clap::Subcommand;
 
 mod config;
 mod monitor;
@@ -7,15 +10,17 @@ mod profile;
 mod server;
 mod client;
 mod protocol;
-mod hyprland_events;
+mod hyprland_event;
 mod hyprland_ipc;
 mod notify;
 
+use clap::Parser;
 use config::Config;
 use client::Client;
 use server::Server;
-use hyprland_events::{monitor_events, HyprlandEvent};
+// use hyprland_event::{monitor_events, HyprlandEvent};
 use futures::FutureExt;
+use anyhow::Result;
 
 #[derive(Parser)]
 #[command(
@@ -25,7 +30,7 @@ use futures::FutureExt;
     about = "Advanced wallpaper manager for Hyprland with swww",
 )]
 struct Cli {
-    #[command(subcommand)]
+    #[clap(subcommand)]
     command: Commands,
 
     #[arg(short, long, value_name = "FILE", global = true)]
@@ -215,29 +220,41 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+
 async fn run_event_monitor() -> Result<()> {
-    use hyprland_events::{monitor_events, HyprlandEvent};
+    use crate::hyprland_event::{monitor_events, HyprlandEvent};
     use futures::FutureExt;
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+    use tokio::sync::Mutex;
+
+    let last_event = Arc::new(Mutex::new(Instant::now()));
+    let debounce_duration = Duration::from_secs(2);
     
-    monitor_events(|event| {
+    monitor_events(move |event| {
+        let last_event = Arc::clone(&last_event);
         async move {
             match event {
-                HyprlandEvent::MonitorAdded { name, .. } => {
-                    info!("Monitor added: {}", name);
-                    notify::send("Monitor added", &name).ok();
-                    
-                    // Trigger profile detection
-                    if let Ok(mut client) = Client::connect().await {
-                        client.detect_and_switch_profile().await.ok();
-                    }
-                }
-                HyprlandEvent::MonitorRemoved { name, .. } => {
-                    info!("Monitor removed: {}", name);
-                    notify::send("Monitor removed", &name).ok();
-                    
-                    // Trigger profile detection
-                    if let Ok(mut client) = Client::connect().await {
-                        client.detect_and_switch_profile().await.ok();
+                HyprlandEvent::MonitorAdded { .. } | HyprlandEvent::MonitorRemoved { .. }=> {
+                    let mut last_event_lock = last_event.lock().await;
+                    let now = Instant::now();
+                    if now.duration_since(*last_event_lock) >= debounce_duration {
+                        *last_event_lock = now;
+                        drop(last_event_lock);
+                        let event_type = match event {
+                            HyprlandEvent::MonitorAdded { .. } => "added",
+                            HyprlandEvent::MonitorRemoved { .. } => "removed",
+                            _ => unreachable!(),
+                        };
+
+                        info!("Monitor: {}", event_type);
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+
+                        if let Ok(mut client) = Client::connect().await {
+                            if let Err(e) = client.detect_and_switch_profile().await {
+                                tracing::warn!("Failed to switch profile after monitor {}: {}", event_type, e);
+                            }
+                        }
                     }
                 }
                 _ => {}

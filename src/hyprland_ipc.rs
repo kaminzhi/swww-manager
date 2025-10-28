@@ -4,6 +4,7 @@ use tokio::net::UnixStream;
 use tokio::io::{AsyncWriteExt, AsyncReadExt};
 use std::path::PathBuf;
 
+#[derive(Clone)]
 pub struct HyprlandIPC {
     socket_path: PathBuf,
 }

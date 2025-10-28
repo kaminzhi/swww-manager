@@ -1,0 +1,127 @@
+# SWWW Manager Configuration
+# Copy this to ~/.config/swww-manager/config.toml and customize
+
+# Current active profile
+current_profile = "default"
+
+# Auto-switch settings
+[auto_switch]
+enabled = false          # Enable automatic wallpaper switching
+interval = 300           # Switch interval in seconds (300s = 5min)
+mode = "random"          # Mode: "random" or "sequential"
+
+# Monitor detection settings
+[monitor_detection]
+enabled = true           # Enable automatic profile switching on monitor changes
+
+# ============================================================================
+# PROFILES
+# ============================================================================
+
+# Default profile - matches any monitor configuration
+[profiles.default]
+monitors = ["*"]         # Wildcard matches all monitors
+wallpaper_dirs = [
+    "~/Pictures/Wallpapers",
+]
+transition = "wipe"      # Transition effect
+transition_duration = 2  # Duration in seconds
+
+# ============================================================================
+# Dual Monitor Setup
+# ============================================================================
+
+[profiles.dual_monitor]
+monitors = ["DP-1", "HDMI-A-1"]  # Match these specific monitors
+wallpaper_dirs = [
+    "~/Pictures/Wallpapers/Dual",
+    "~/Pictures/Wallpapers/Ultrawide",
+]
+transition = "fade"
+transition_duration = 3
+
+# ============================================================================
+# Gaming Setup - Triple Monitor
+# ============================================================================
+
+[profiles.gaming]
+monitors = ["DP-1", "DP-2", "HDMI-A-1"]
+wallpaper_dirs = [
+    "~/Pictures/Wallpapers/Gaming",
+    "~/Pictures/Wallpapers/Abstract",
+    "~/Pictures/Wallpapers/Cyberpunk",
+]
+transition = "outer"
+transition_duration = 2
+
+# ============================================================================
+# Laptop Only - Single Monitor
+# ============================================================================
+
+[profiles.laptop]
+monitors = ["eDP-1"]
+wallpaper_dirs = [
+    "~/Pictures/Wallpapers/Minimal",
+    "~/Pictures/Wallpapers/Nature",
+]
+transition = "simple"
+transition_duration = 1
+
+# ============================================================================
+# Work Setup - Vertical Monitors
+# ============================================================================
+
+[profiles.work]
+monitors = ["DP-3", "DP-4"]
+wallpaper_dirs = [
+    "~/Pictures/Wallpapers/Professional",
+    "~/Pictures/Wallpapers/Minimal",
+]
+transition = "fade"
+transition_duration = 3
+
+# ============================================================================
+# TRANSITION EFFECTS
+# ============================================================================
+#
+# Available transitions:
+#   - simple      : Direct switch (fastest)
+#   - fade        : Fade in/out
+#   - wipe        : Wipe effect
+#   - grow        : Growing circle
+#   - outer       : From edges to center
+#   - random      : Random effect each time
+#
+# ============================================================================
+
+# ============================================================================
+# TIPS
+# ============================================================================
+#
+# 1. Monitor Names:
+#    - Run: swww-manager monitors
+#    - Or: hyprctl monitors
+#
+# 2. Wallpaper Organization:
+#    - Create subdirectories for different themes
+#    - Use descriptive names
+#    - Supported formats: jpg, jpeg, png, gif, webp, bmp
+#
+# 3. Profile Matching:
+#    - Profiles are matched by monitor names
+#    - First exact match wins
+#    - Wildcard (*) is used as fallback
+#    - More specific profiles should be listed first
+#
+# 4. Auto-Switch:
+#    - Enable in config or: swww-manager auto on
+#    - Adjust interval: swww-manager auto on --interval 600
+#    - Disable timer if not needed to save resources
+#
+# 5. Performance:
+#    - Use "simple" transition for faster switching
+#    - Keep wallpaper directories organized
+#    - Monitor service uses ~3MB RAM
+#    - Main service auto-exits when idle (0MB when not in use)
+#
+# ============================================================================

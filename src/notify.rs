@@ -1,6 +1,6 @@
 use crate::hyprland_ipc::HyprlandIPC;
 use anyhow::Result;
-use tracing::warn;``
+use tracing::warn;
 // use std::process::Command;
 
 pub async fn send(title: &str, message: &str) -> Result<()> {
@@ -40,11 +40,14 @@ async fn send_with_color(message: &str, color: &str, duration_ms: u32) -> Result
 }
 
 pub fn send_sync(title: &str, message: &str) -> Result<()> {
+    let title = title.to_owned();
+    let message = message.to_owned();
+
     tokio::runtime::Handle::try_current()
         .ok()
         .map(|handle| {
             handle.spawn(async move {
-                send(title, message).await.ok();
+                send(&title, &message).await.ok();
             });
         });
     Ok(())

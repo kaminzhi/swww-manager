@@ -44,7 +44,7 @@ impl Client {
         
         match self.send_request(request).await? {
             Response::Success { message } => {
-                println!(message);
+                println!("{}", message);
                 Ok(())
             }
             Response::Error { message } => {
@@ -61,7 +61,7 @@ impl Client {
         
         match self.send_request(request).await? {
             Response::Success { message } => {
-                println!(message);
+                println!("{}", message);
                 Ok(())
             }
             Response::Error { message } => {
@@ -141,7 +141,7 @@ impl Client {
         
         match self.send_request(request).await? {
             Response::Success { message } => {
-                println!(message);
+                println!("{}", message);
                 Ok(())
             }
             Response::Error { message } => {
@@ -194,7 +194,7 @@ impl Client {
         match self.send_request(request).await? {
             Response::Success { message } => {
                 info!(message);
-                println!(message);
+                println!("{}", message);
                 Ok(())
             }
             Response::Error { message } => {
@@ -209,7 +209,7 @@ impl Client {
         
         match self.send_request(request).await? {
             Response::Success { message } => {
-                println!(message);
+                println!("{}", message);
                 Ok(())
             }
             Response::Error { message } => {
