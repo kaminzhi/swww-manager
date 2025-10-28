@@ -34,13 +34,12 @@ impl ProfileManager {
 
         let mut best_match = None;
         let mut best_score = 0;
+        let mut fallback_match = None;
 
         for (name, profile) in &self.config.profiles {
-
+            // Handle wildcard profile as fallback
             if profile.monitors.len() == 1 && profile.monitors.contains(&"*".to_string()) {
-                if best_match.is_none() {
-                    best_match = Some(name.clone());
-                }
+                fallback_match = Some(name.clone());
                 continue;
             }
 
@@ -59,7 +58,8 @@ impl ProfileManager {
             }
         }
 
-        Ok(best_match)
+        // Return exact match first, fallback to wildcard if no exact match
+        Ok(best_match.or(fallback_match))
     }
 
     pub fn list(&self) {

@@ -5,6 +5,7 @@ use crate::profile::ProfileManager;
 use crate::protocol::{Request, Response, StatusInfo, ProfileInfo};
 use crate::notify;
 
+use futures::FutureExt;
 use anyhow::{Context, Result};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -108,6 +109,34 @@ impl Server {
                 listener
             }
         };
+        {
+            use std::sync::Arc;
+            use tokio::sync::Mutex as TokioMutex;
+            let debounce_delay = std::time::Duration::from_millis(900);
+            tokio::spawn(async move {
+                let scheduled_task: Arc<TokioMutex<Option<tokio::task::JoinHandle<()>>>> = Arc::new(TokioMutex::new(None));
+                let scheduled_task_cloned = scheduled_task.clone();
+                let _ = crate::hyprland_event::monitor_events(move |event| {
+                    let scheduled_task = scheduled_task_cloned.clone();
+                    async move {
+                        match event {
+                            crate::hyprland_event::HyprlandEvent::MonitorAdded { .. } |
+                            crate::hyprland_event::HyprlandEvent::MonitorRemoved { .. } => {
+                                if let Some(handle) = scheduled_task.lock().await.take() { handle.abort(); }
+                                let handle = tokio::spawn(async move {
+                                    tokio::time::sleep(debounce_delay).await;
+                                    if let Ok(mut client) = crate::client::Client::connect().await {
+                                        let _ = client.detect_and_switch_profile().await;
+                                    }
+                                });
+                                *scheduled_task.lock().await = Some(handle);
+                            }
+                            _ => {}
+                        }
+                    }.boxed()
+                }).await;
+            });
+        }
 
         let mut last_config_mtime: Option<std::time::SystemTime> = None;
 

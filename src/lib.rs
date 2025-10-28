@@ -3,7 +3,7 @@ pub mod monitor;
 pub mod wallpaper;
 pub mod profile;
 pub mod protocol;
-// pub mod hyprland_events;
+pub mod hyprland_event;
 pub mod hyprland_ipc;
 pub mod notify;
 pub mod server;
