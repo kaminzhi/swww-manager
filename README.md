@@ -27,11 +27,18 @@ Advanced wallpaper manager for Hyprland using swww with multi-monitor support, a
 git clone https://github.com/yourusername/swww-manager
 cd swww-manager
 
-# Run installation script
+# Run installation script (interactive)
 chmod +x install.sh
 ./install.sh
 
 ```
+
+During install you'll be asked how to start swww-manager:
+
+- systemd user units (recommended; socket activation)
+- Hyprland exec-once (no systemd)
+- Sway exec_always (no systemd)
+- None (configure manually)
 
 ### Manual Installation
 
@@ -42,17 +49,25 @@ cargo build --release
 # Install binary
 sudo cp target/release/swww-manager /usr/local/bin/
 
-# Install systemd units
+# Option A: systemd (socket activation)
 mkdir -p ~/.config/systemd/user
 cp systemd/* ~/.config/systemd/user/
 systemctl --user daemon-reload
-
-# Generate config
 swww-manager init
-
-# Enable services
 systemctl --user enable --now swww-manager.socket
-systemctl --user enable --now swww-monitor.service  # Optional
+systemctl --user enable --now swww-monitor.service  # optional
+
+# Option B: Hyprland (no systemd)
+# In ~/.config/hypr/hyprland.conf
+#   exec-once = swww init
+#   exec-once = swww-manager serve
+#   exec-once = swww-manager monitor-events
+
+# Option C: Sway (no systemd)
+# In ~/.config/sway/config
+#   exec_always swww init
+#   exec_always swww-manager serve
+#   exec_always swww-manager monitor-events
 ```
 
 ## Usage
@@ -82,7 +97,7 @@ swww-manager detect
 swww-manager auto on --interval 300
 ```
 
-### Service Management
+### Service Management (systemd option)
 
 ```bash
 # Check socket status
@@ -92,7 +107,7 @@ systemctl --user status swww-manager.socket
 systemctl --user status swww-monitor.service
 
 # View logs
-journalctl --user -u swww-manager@.service -f
+journalctl --user -u swww-manager.service -f
 journalctl --user -u swww-monitor.service -f
 
 # Restart services
@@ -128,7 +143,9 @@ transition = "fade"
 transition_duration = 3
 ```
 
-See `config.example.toml` for more examples.
+Hot reload: editing `~/.config/swww-manager/config.toml` is detected automatically; the server will reload config and run one detect/refresh.
+
+See `config.sample.toml` for more examples.
 
 ## Architecture
 
