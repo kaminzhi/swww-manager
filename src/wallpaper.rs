@@ -5,6 +5,7 @@ use rand::seq::SliceRandom;
 use std::path::PathBuf;
 use std::process::Command;
 use tracing::info;
+use rand::prelude::IndexedMutRandom;
 
 #[derive(Clone)]
 pub struct WallpaperManager {
@@ -27,7 +28,7 @@ impl WallpaperManager {
             self.wallpaper_cache = self.collect_wallpapers(profile)?;
         }
 
-        let wallpapers = &self.wallpaper_cache;
+        let wallpapers = &mut self.wallpaper_cache;
         
         if wallpapers.is_empty() {
             anyhow::bail!("No wallpapers found in configured directories");
@@ -36,7 +37,7 @@ impl WallpaperManager {
         let wallpaper = match config.auto_switch.mode {
             SwitchMode::Random => {
                 let mut rng = rand::thread_rng();
-                wallpapers.choose(&mut rng).unwrap().clone()
+                wallpapers.choose_mut(&mut rng).unwrap().clone()
             }
             SwitchMode::Sequential => {
                 let wp = wallpapers[self.sequential_index % wallpapers.len()].clone();

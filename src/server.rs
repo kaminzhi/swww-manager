@@ -36,7 +36,18 @@ impl Server {
 
     pub async fn run(mut self) -> Result<()> {
         let socket_path = Self::socket_path();
+
+        if socket_path.exists() {
+            use std::io::Write;
         
+            warn!("\nWARNING: Socket already exists at {:?}", socket_path);
+            warn!("Systemd socket service may be running.");
+            warn!("Stop systemd first:");
+            warn!("  systemctl --user stop swww-manager.socket");
+            warn!("  systemctl --user stop swww-manager.service");
+        }
+    
+
         // Remove old socket if exists
         if socket_path.exists() {
             std::fs::remove_file(&socket_path)
