@@ -206,10 +206,53 @@ start_services() {
   fi
 }
 
+# ----- Startup choices -----
+choose_startup_method() {
+  echo
+  echo "Choose how to start swww-manager (recommended: systemd):"
+  echo "  1) systemd user units (socket activation)"
+  echo "  2) Hyprland exec-once"
+  echo "  3) Sway exec_always"
+  echo "  4) None (I'll configure manually)"
+  read -p "Your choice [1-4]: " -r CHOICE
+  case "$CHOICE" in
+    1|"" ) START_MODE="systemd";;
+    2 ) START_MODE="hyprland";;
+    3 ) START_MODE="sway";;
+    4 ) START_MODE="none";;
+    * ) START_MODE="systemd";;
+  esac
+  print_info "Selected: $START_MODE"
+}
+
+print_hyprland_instructions() {
+  cat <<'EOT'
+
+Add the following lines to your ~/.config/hypr/hyprland.conf:
+
+  exec-once = swww init
+  exec-once = swww-manager serve
+  exec-once = swww-manager monitor-events
+
+EOT
+}
+
+print_sway_instructions() {
+  cat <<'EOT'
+
+Add the following lines to your ~/.config/sway/config:
+
+  exec_always swww init
+  exec_always swww-manager serve
+  exec_always swww-manager monitor-events
+
+EOT
+}
+
 show_completion() {
   echo
   echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
-  echo -e "${GREEN}║                    Installation Complete!                     ║${NC}"
+  echo -e "${GREEN}║                    Installation Complete!                      ║${NC}"
   echo -e "${GREEN}╚════════════════════════════════════════════════════════════════╝${NC}"
   echo
   print_info "Configuration file: $HOME/.config/swww-manager/config.toml"
@@ -221,10 +264,12 @@ show_completion() {
   echo "  swww-manager status              # Show status"
   echo "  swww-manager monitors            # Show monitors"
   echo
-  print_info "Service management:"
-  echo "  systemctl --user status swww-manager.socket"
-  echo "  systemctl --user status swww-monitor.service"
-  echo "  journalctl --user -u swww-manager@.service -f"
+  if [ "$START_MODE" = "systemd" ]; then
+    print_info "Service management:"
+    echo "  systemctl --user status swww-manager.socket"
+    echo "  systemctl --user status swww-monitor.service"
+    echo "  journalctl --user -u swww-manager.service -f"
+  fi
   echo
   print_info "For more information, see: README.md"
   echo
@@ -247,11 +292,30 @@ EOF
   check_dependencies
   build_project
   install_binary
-  install_systemd_units
   generate_config
   create_wallpaper_dirs
-  enable_services
-  start_services
+
+  choose_startup_method
+
+  case "$START_MODE" in
+    systemd)
+      install_systemd_units
+      enable_services
+      start_services
+      ;;
+    hyprland)
+      print_warning "Skipping systemd setup as requested."
+      print_hyprland_instructions
+      ;;
+    sway)
+      print_warning "Skipping systemd setup as requested."
+      print_sway_instructions
+      ;;
+    none)
+      print_warning "Skipping auto-start configuration as requested."
+      ;;
+  esac
+
   show_completion
 }
 

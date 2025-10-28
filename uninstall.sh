@@ -42,28 +42,53 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
   exit 0
 fi
 
-# Stop services
-print_info "Stopping services..."
-systemctl --user stop swww-manager.socket 2>/dev/null || true
-systemctl --user stop swww-monitor.service 2>/dev/null || true
-systemctl --user stop swww-timer.timer 2>/dev/null || true
+# Helper: stop/disable unit if it exists
+stop_disable_unit() {
+  local unit="$1"
+  if systemctl --user list-unit-files | grep -q "^${unit}\\>"; then
+    systemctl --user stop "$unit" 2>/dev/null || true
+    systemctl --user disable "$unit" 2>/dev/null || true
+    print_success "Stopped/disabled $unit"
+  else
+    print_info "$unit not installed or already removed"
+  fi
+}
 
-# Disable services
-print_info "Disabling services..."
-systemctl --user disable swww-manager.socket 2>/dev/null || true
-systemctl --user disable swww-monitor.service 2>/dev/null || true
-systemctl --user disable swww-timer.timer 2>/dev/null || true
+# Auto-detect systemd usage (units installed under user dir)
+SYSTEMD_USED=false
+if ls ~/.config/systemd/user 1>/dev/null 2>&1; then
+  if ls ~/.config/systemd/user | grep -Eq "^swww-(manager|monitor|timer)"; then
+    SYSTEMD_USED=true
+  fi
+fi
 
-# Remove systemd units
-print_info "Removing systemd units..."
-rm -f ~/.config/systemd/user/swww-manager.socket
-rm -f ~/.config/systemd/user/swww-manager@.service
-rm -f ~/.config/systemd/user/swww-monitor.service
-rm -f ~/.config/systemd/user/swww-timer.timer
-rm -f ~/.config/systemd/user/swww-timer.service
+if [ "$SYSTEMD_USED" = true ]; then
+  print_info "Detected systemd user units. Cleaning them up..."
 
-systemctl --user daemon-reload
-print_success "Systemd units removed"
+  # Stop/disable known units if present
+  stop_disable_unit swww-manager.socket
+  stop_disable_unit swww-manager.service
+  stop_disable_unit swww-monitor.service
+  stop_disable_unit swww-timer.timer
+  stop_disable_unit swww-timer.service
+
+  # Remove unit files if they exist
+  print_info "Removing systemd unit files..."
+  rm -f ~/.config/systemd/user/swww-manager.socket
+  rm -f ~/.config/systemd/user/swww-manager.service
+  rm -f ~/.config/systemd/user/swww-manager@.service
+  rm -f ~/.config/systemd/user/swww-monitor.service
+  rm -f ~/.config/systemd/user/swww-timer.timer
+  rm -f ~/.config/systemd/user/swww-timer.service
+
+  systemctl --user daemon-reload || true
+  print_success "Systemd units removed"
+else
+  print_info "No systemd user units detected. Skipping systemd cleanup."
+fi
+
+# Remove runtime socket if any (for foreground/manual runs)
+rm -f "/run/user/$UID/swww-manager.sock" 2>/dev/null || true
 
 # Remove binary
 print_info "Removing binary..."
