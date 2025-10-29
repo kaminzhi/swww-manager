@@ -37,7 +37,6 @@ During install you'll be asked how to start swww-manager:
 
 - systemd user units (recommended; socket activation)
 - Hyprland exec-once (no systemd)
-- Sway exec_always (no systemd)
 - None (configure manually)
 
 ### Manual Installation
@@ -62,12 +61,6 @@ systemctl --user enable --now swww-manager.socket
 #   exec-once = swww init
 #   exec-once = swww-manager serve
 #   exec-once = swww-manager monitor-events
-
-# Option C: Sway (no systemd)
-# In ~/.config/sway/config
-#   exec_always swww init
-#   exec_always swww-manager serve
-#   exec_always swww-manager monitor-events
 ```
 
 ## Usage
@@ -211,5 +204,9 @@ cargo clippy
 
 ## Acknowledgments
 
-- [Hyprland](https://github.com/hyprwm/Hyprland) - Amazing Wayland compositor
-- [swww](https://github.com/Horus645/swww) - Wallpaper daemon
+- [Hyprland](https://github.com/hyprwm/Hyprland) - Wayland compositor
+- [swww](https://github.com/Horus645/swww) - Wallpaper daemon]
+
+## License
+
+[MIT](./LICENSE) License © 2025
