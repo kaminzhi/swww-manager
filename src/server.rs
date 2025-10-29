@@ -9,7 +9,9 @@ use futures::FutureExt;
 use anyhow::{Context, Result};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use std::path::PathBuf;
+use tokio::process::Command as TokioCommand;
+use tokio::fs as TokioFs;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tracing::{info, error, warn, debug};
 use tokio::time::{Duration, MissedTickBehavior};
@@ -106,6 +108,69 @@ impl Server {
                     let perms = std::fs::Permissions::from_mode(0o600);
                     std::fs::set_permissions(&socket_path, perms)?;
                 }
+
+                let socket_path = Self::socket_path();
+                let initial_runtime_dir = std::env::var_os("XDG_RUNTIME_DIR");
+
+                tokio::spawn(async move {
+                    loop {
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+
+                        // If runtime dir vanished -> treat as session end
+                        let runtime_dir = match std::env::var_os("XDG_RUNTIME_DIR") {
+                            Some(d) => d,
+                            None => {
+                                tracing::info!("XDG_RUNTIME_DIR gone, shutting down swww-manager.");
+                                let _ = TokioFs::remove_file(&socket_path).await;
+                                std::process::exit(0);
+                            }
+                        };
+
+                        let runtime_path = Path::new(&runtime_dir);
+
+                        // HYPR detection
+                        let mut hypr_running = false;
+                        if let Some(sig) = std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE") {
+                            let socket = runtime_path.join("hypr").join(sig).join(".socket2.sock");
+                            hypr_running = socket.exists();
+                        } else {
+                            if let Ok(mut entries) = glob::glob(&format!("{}/hypr/*/.socket2.sock", runtime_path.display())) {
+                                if entries.next().is_some() {
+                                    hypr_running = true;
+                                }
+                            }
+                        }
+
+                        // Sway detection
+                        let mut sway_running = false;
+                        if let Some(sway_sock) = std::env::var_os("SWAYSOCK") {
+                            let sockp = Path::new(&sway_sock);
+                            sway_running = sockp.exists();
+                        } else {
+                            if let Ok(mut entries) = glob::glob(&format!("{}/sway-ipc.*", runtime_path.display())) {
+                                if entries.next().is_some() {
+                                    sway_running = true;
+                                }
+                            }
+                        }
+
+                        // If neither compositor socket is present, or initial runtime dir disappeared -> exit
+                        let initial_gone = initial_runtime_dir
+                            .as_ref()
+                            .map(|d| !Path::new(d).exists())
+                            .unwrap_or(false);
+
+                        if (!hypr_running && !sway_running) || initial_gone {
+                            tracing::info!("No compositor socket detected (hyprland/sway) or runtime dir changed. Shutting down swww-manager.");
+
+                            if let Err(e) = TokioFs::remove_file(&socket_path).await {
+                                tracing::debug!("Failed to remove socket file: {}", e);
+                            }
+
+                            std::process::exit(0);
+                        }
+                    }
+                });
 
                 listener
             }
@@ -586,6 +651,7 @@ impl Server {
                         let mut wm = wm_for_spawn;
                         let set_timeout = Duration::from_secs(12);
                         let set_t0 = tokio::time::Instant::now();
+
                         match tokio::time::timeout(set_timeout, wm.set_wallpaper(&wp_clone, &prof)).await {
                             Ok(Ok(())) => {
                                 let set_dur = tokio::time::Instant::now().duration_since(set_t0);
