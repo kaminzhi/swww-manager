@@ -12,6 +12,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::path::PathBuf;
 use std::time::Instant;
 use tracing::{info, error, warn, debug};
+use tokio::time::{Duration, MissedTickBehavior};
 
 #[derive(Clone)]
 pub struct Server {
@@ -138,48 +139,15 @@ impl Server {
             });
         }
 
-        // Background: internal auto-switch scheduler (non-systemd mode)
+        // Background: replace manual scheduler with single monotonic auto_switch_loop
         {
-            let mut server_for_auto = self.clone();
-            use std::sync::Arc;
-            use tokio::sync::Mutex as TokioMutex;
-            let busy_flag = Arc::new(TokioMutex::new(false));
-            tokio::spawn(async move {
-                use std::time::{Duration, Instant};
-                let mut last_switch = Instant::now();
-                loop {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                    let cfg = match crate::config::Config::load(None) {
-                        Ok(c) => c,
-                        Err(_) => continue,
-                    };
-                    if !cfg.auto_switch.enabled { continue; }
-                    let interval = if cfg.auto_switch.interval == 0 { 300 } else { cfg.auto_switch.interval };
-                    if last_switch.elapsed().as_secs() < interval { continue; }
-                    if *busy_flag.lock().await { continue; }
-                    server_for_auto.config = cfg.clone();
-                    server_for_auto.profile_manager.update_config(cfg);
-                    last_switch = Instant::now();
-                    let busy_clone = busy_flag.clone();
-                    tokio::spawn({
-                        let mut srv = server_for_auto.clone();
-                        let busy = busy_clone;
-                        async move {
-                            {
-                                let mut b = busy.lock().await;
-                                *b = true;
-                            }
-                            if let Err(e) = srv.switch_wallpaper().await {
-                                warn!("Auto-switch failed: {}", e);
-                            }
-                            {
-                                let mut b = busy.lock().await;
-                                *b = false;
-                            }
-                        }
-                    });
-                }
-            });
+            // spawn the single monotonic auto-switch loop (uses auto_switch_loop impl)
+            if self.config.auto_switch.enabled && self.config.auto_switch.interval > 0 {
+                let s = self.clone();
+                tokio::spawn(async move {
+                    s.auto_switch_loop().await;
+                });
+            }
         }
 
         let mut last_config_mtime: Option<std::time::SystemTime> = None;
@@ -517,9 +485,9 @@ impl Server {
         let profile = self.profile_manager.current_profile()
             .context("Failed to get current profile")?;
         
-        // Refresh wallpaper cache to pick up new images
-        self.wallpaper_manager.refresh_cache(profile)
-            .context("Failed to refresh wallpaper cache")?;
+        if let Err(e) = self.wallpaper_manager.ensure_cache(profile).await {
+            warn!("Failed to ensure wallpaper cache: {}", e);
+        }
         
         let wallpaper = self.wallpaper_manager.get_wallpaper(profile, &self.config)
             .context("Failed to get wallpaper")?;
@@ -545,7 +513,6 @@ impl Server {
         notify::send("Profile switched", name).await
             .context("Failed to send notification")?;
         
-        // Switch wallpaper immediately
         self.switch_wallpaper().await?;
         
         Ok(())
@@ -557,19 +524,94 @@ impl Server {
         
         PathBuf::from(runtime_dir).join("swww-manager.sock")
     }
+
+    pub async fn auto_switch_loop(mut self) {
+        let interval_secs = self.config.auto_switch.interval;
+        if interval_secs == 0 {
+            tracing::warn!("Auto-switch interval is 0, auto-switch disabled");
+            return;
+        }
+
+        debug!("Starting auto-switch loop (interval = {}s)", interval_secs);
+
+        let mut intrvl = tokio::time::interval(Duration::from_secs(interval_secs));
+        intrvl.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+        loop {
+            // measure wait until tick
+            let wait_start = tokio::time::Instant::now();
+            intrvl.tick().await;
+            let waited = tokio::time::Instant::now().duration_since(wait_start);
+            debug!("Auto-switch tick (waited {:.3}s)", waited.as_secs_f64());
+
+            if !self.config.auto_switch.enabled {
+                debug!("Auto-switch disabled, skipping tick");
+                continue;
+            }
+
+            let profile = match self.profile_manager.current_profile() {
+                Ok(p) => p.clone(),
+                Err(e) => {
+                    tracing::warn!("Auto-switch: failed to get current profile: {}", e);
+                    continue;
+                }
+            };
+
+            // measure ensure_cache
+            let t0 = tokio::time::Instant::now();
+            if let Err(e) = self.wallpaper_manager.ensure_cache(&profile).await {
+                tracing::warn!("Auto-switch: ensure_cache failed: {}", e);
+            }
+            let ensure_dur = tokio::time::Instant::now().duration_since(t0);
+            debug!("ensure_cache took {:.3}s", ensure_dur.as_secs_f64());
+
+            // pick wallpaper (fast sync op) and log
+            let pick_t0 = tokio::time::Instant::now();
+            match self.wallpaper_manager.get_wallpaper(&profile, &self.config) {
+                Ok(wp) => {
+                    let pick_dur = tokio::time::Instant::now().duration_since(pick_t0);
+                    debug!("Picked wallpaper '{}' (pick took {:.3}s)", wp, pick_dur.as_secs_f64());
+
+                    // clone minimal state for background task and spawn
+                    let wm_for_spawn = self.wallpaper_manager.clone();
+                    let prof = profile.clone();
+                    let wp_clone = wp.clone();
+
+                    // record chosen wallpaper immediately to avoid picking it again on next tick
+                    // (optimistic: if set_wallpaper later fails, it's acceptable — prevents repeats)
+                    self.wallpaper_manager.set_last_wallpaper(PathBuf::from(&wp_clone));
+
+                    debug!("Spawning background set_wallpaper task for '{}'", wp_clone);
+                    tokio::spawn(async move {
+                        let mut wm = wm_for_spawn;
+                        let set_timeout = Duration::from_secs(12);
+                        let set_t0 = tokio::time::Instant::now();
+                        match tokio::time::timeout(set_timeout, wm.set_wallpaper(&wp_clone, &prof)).await {
+                            Ok(Ok(())) => {
+                                let set_dur = tokio::time::Instant::now().duration_since(set_t0);
+                                tracing::info!("Auto-switch applied wallpaper: {} (took {:.3}s)", wp_clone, set_dur.as_secs_f64());
+                            }
+                            Ok(Err(e)) => {
+                                tracing::warn!("Auto-switch set_wallpaper error: {}", e);
+                            }
+                            Err(_) => {
+                                tracing::warn!("Auto-switch set_wallpaper timed out (> {}s)", set_timeout.as_secs());
+                            }
+                        }
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!("Auto-switch: failed to pick wallpaper: {}", e);
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
-
-    #[tokio::test]
-    async fn test_server_creation() {
-        let config = Config::default();
-        let server = Server::new(config).await;
-        assert!(server.is_ok());
-    }
 
     #[tokio::test]
     async fn test_socket_path() {

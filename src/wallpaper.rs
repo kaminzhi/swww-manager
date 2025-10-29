@@ -1,11 +1,11 @@
 use crate::config::{Config, Profile, SwitchMode};
 use anyhow::{Context, Result};
 use glob::glob;
-use rand::seq::SliceRandom;
+use rand::Rng;
 use std::path::PathBuf;
-use std::process::Command;
+use tokio::process::Command;
 use tracing::info;
-use rand::prelude::IndexedMutRandom;
+use tokio::time::{timeout, Duration};
 
 #[derive(Clone)]
 pub struct WallpaperManager {
@@ -34,25 +34,60 @@ impl WallpaperManager {
             anyhow::bail!("No wallpapers found in configured directories");
         }
 
-        let wallpaper = match config.auto_switch.mode {
+        // if only one wallpaper, just return it
+        if wallpapers.len() == 1 {
+            return Ok(wallpapers[0].to_string_lossy().to_string());
+        }
+
+        let chosen_path = match config.auto_switch.mode {
             SwitchMode::Random => {
+                // try a few times to pick a different wallpaper than last_wallpaper
                 let mut rng = rand::thread_rng();
-                wallpapers.choose_mut(&mut rng).unwrap().clone()
+                let mut attempts = 0;
+                loop {
+                    let idx = rng.gen_range(0..wallpapers.len());
+                    let cand = wallpapers[idx].clone();
+                    if self.last_wallpaper.as_ref().map(|p| p != &cand).unwrap_or(true) {
+                        break cand;
+                    }
+                    attempts += 1;
+                    if attempts >= 8 {
+                        // give up and accept current candidate (rare)
+                        break cand;
+                    }
+                }
             }
             SwitchMode::Sequential => {
-                let wp = wallpapers[self.sequential_index % wallpapers.len()].clone();
-                self.sequential_index += 1;
-                wp
+                // advance at least one slot; choose first index not equal to last_wallpaper
+                let mut start = self.sequential_index % wallpapers.len();
+                let mut found = None;
+                for _ in 0..wallpapers.len() {
+                    let cand = wallpapers[start].clone();
+                    if self.last_wallpaper.as_ref().map(|p| p != &cand).unwrap_or(true) {
+                        found = Some(cand);
+                        // next time start from next position
+                        self.sequential_index = (start + 1) % wallpapers.len();
+                        break;
+                    }
+                    start = (start + 1) % wallpapers.len();
+                }
+                // fallback to current index if nothing found (shouldn't happen)
+                found.unwrap_or_else(|| {
+                    let idx = self.sequential_index % wallpapers.len();
+                    let wp = wallpapers[idx].clone();
+                    self.sequential_index = (self.sequential_index + 1) % wallpapers.len();
+                    wp
+                })
             }
         };
 
-        Ok(wallpaper.to_string_lossy().to_string())
+        Ok(chosen_path.to_string_lossy().to_string())
     }
 
     pub async fn set_wallpaper(&mut self, path: &str, profile: &Profile) -> Result<()> {
         info!("Setting wallpaper: {}", path);
 
-        let output = Command::new("swww")
+        let cmd = Command::new("swww")
             .args(&[
                 "img",
                 path,
@@ -61,8 +96,17 @@ impl WallpaperManager {
                 "--transition-duration",
                 &profile.transition_duration.to_string(),
             ])
-            .output()
-            .context("Failed to execute swww. Is swww daemon running? (swww init)")?;
+            .output();
+
+        let output = match timeout(Duration::from_secs(6), cmd).await {
+            Ok(Ok(output)) => output,
+            Ok(Err(e)) => {
+                return Err(e).context("Failed to execute swww. Is swww daemon running? (swww init)")?;
+            }
+            Err(_) => {
+                anyhow::bail!("swww command timed out");
+            }
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -77,8 +121,64 @@ impl WallpaperManager {
         self.last_wallpaper.as_ref()
     }
 
+    pub fn set_last_wallpaper(&mut self, path: PathBuf) {
+        self.last_wallpaper = Some(path);
+    }
+    
     pub fn refresh_cache(&mut self, profile: &Profile) -> Result<()> {
         self.wallpaper_cache = self.collect_wallpapers(profile)?;
+        Ok(())
+    }
+
+    pub async fn ensure_cache(&mut self, profile: &Profile) -> Result<()> {
+        if !self.wallpaper_cache.is_empty() {
+            return Ok(());
+        }
+
+        let dirs: Vec<PathBuf> = profile
+            .wallpaper_dirs
+            .iter()
+            .map(|d| {
+                let dir = shellexpand::tilde(&d.to_string_lossy()).into_owned();
+                PathBuf::from(dir)
+            })
+            .collect();
+
+        let wallpapers = tokio::task::spawn_blocking(move || -> Result<Vec<PathBuf>> {
+            let mut wallpapers = Vec::new();
+            let extensions = ["jpg", "jpeg", "png", "gif", "webp", "bmp"];
+
+            for dir in dirs {
+                if !dir.exists() {
+                    tracing::warn!("Wallpaper directory does not exist: {:?}", dir);
+                    continue;
+                }
+
+                for ext in &extensions {
+                    let pattern = format!("{}/*.{}", dir.display(), ext);
+                    if let Ok(paths) = glob(&pattern) {
+                        for path in paths.flatten() {
+                            wallpapers.push(path);
+                        }
+                    }
+
+                    let pattern_upper = format!("{}/*.{}", dir.display(), ext.to_uppercase());
+                    if let Ok(paths) = glob(&pattern_upper) {
+                        for path in paths.flatten() {
+                            wallpapers.push(path);
+                        }
+                    }
+                }
+            }
+
+            wallpapers.sort();
+            wallpapers.dedup();
+            Ok(wallpapers)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Join error when collecting wallpapers: {}", e))??;
+
+        self.wallpaper_cache = wallpapers;
         Ok(())
     }
 
