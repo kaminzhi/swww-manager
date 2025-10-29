@@ -63,7 +63,8 @@ impl HyprlandIPC {
         self.dispatch(&cmd).await?;
         Ok(())
     }
-
+    
+    /*
     /// activeWorkspace
     pub async fn get_active_workspace(&self) -> Result<Workspace> {
         let response = self.dispatch_json("activeworkspace").await?;
@@ -78,6 +79,7 @@ impl HyprlandIPC {
         self.dispatch(&cmd).await?;
         Ok(())
     }
+    */
 }
 
 #[allow(non_snake_case, dead_code)]
@@ -109,6 +111,7 @@ pub struct WorkspaceBasic {
     pub name: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct Workspace {
     pub id: i32,

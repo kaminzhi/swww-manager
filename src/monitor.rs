@@ -1,4 +1,5 @@
-use crate::hyprland_ipc::{HyprlandIPC, Monitor as HyprMonitor};
+// use crate::hyprland_ipc::{HyprlandIPC, Monitor as HyprMonitor};
+use crate::hyprland_ipc::HyprlandIPC;
 use anyhow::{anyhow, Result};
 use tracing::warn;
 
@@ -39,6 +40,7 @@ impl MonitorManager {
         }
     }
 
+    /*
     pub async fn get_monitor_details(&self) -> Result<Vec<HyprMonitor>> {
         if let Some(ipc) = &self.ipc {
             let monitors = ipc.get_monitors().await?;
@@ -62,7 +64,7 @@ impl MonitorManager {
         } else {
             Err(anyhow!("Hyprland IPC not available"))
         }
-    }
+    }*/
     
     pub async fn get_stable_monitors(&self) -> Result<Vec<String>> {
         use tokio::time::{sleep, Duration, Instant};

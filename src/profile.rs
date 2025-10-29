@@ -8,6 +8,7 @@ pub struct ProfileManager {
     config: Config,
 }
 
+#[allow(dead_code)]
 impl ProfileManager {
     pub fn new(config: Config) -> Self {
         Self { config }

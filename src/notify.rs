@@ -2,6 +2,7 @@ use crate::hyprland_ipc::HyprlandIPC;
 use anyhow::Result;
 use tracing::warn;
 
+#[allow(dead_code)]
 #[derive(Copy, Clone)]
 pub enum NotificationKind {
     Info,
@@ -50,6 +51,7 @@ async fn send_with_color(kind: NotificationKind, message: &str, color: &str, dur
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn send_sync(title: &str, message: &str) -> Result<()> {
     let title = title.to_owned();
     let message = message.to_owned();
