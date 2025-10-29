@@ -138,6 +138,50 @@ impl Server {
             });
         }
 
+        // Background: internal auto-switch scheduler (non-systemd mode)
+        {
+            let mut server_for_auto = self.clone();
+            use std::sync::Arc;
+            use tokio::sync::Mutex as TokioMutex;
+            let busy_flag = Arc::new(TokioMutex::new(false));
+            tokio::spawn(async move {
+                use std::time::{Duration, Instant};
+                let mut last_switch = Instant::now();
+                loop {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    let cfg = match crate::config::Config::load(None) {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+                    if !cfg.auto_switch.enabled { continue; }
+                    let interval = if cfg.auto_switch.interval == 0 { 300 } else { cfg.auto_switch.interval };
+                    if last_switch.elapsed().as_secs() < interval { continue; }
+                    if *busy_flag.lock().await { continue; }
+                    server_for_auto.config = cfg.clone();
+                    server_for_auto.profile_manager.update_config(cfg);
+                    last_switch = Instant::now();
+                    let busy_clone = busy_flag.clone();
+                    tokio::spawn({
+                        let mut srv = server_for_auto.clone();
+                        let busy = busy_clone;
+                        async move {
+                            {
+                                let mut b = busy.lock().await;
+                                *b = true;
+                            }
+                            if let Err(e) = srv.switch_wallpaper().await {
+                                warn!("Auto-switch failed: {}", e);
+                            }
+                            {
+                                let mut b = busy.lock().await;
+                                *b = false;
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
         let mut last_config_mtime: Option<std::time::SystemTime> = None;
 
         loop {
