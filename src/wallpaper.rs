@@ -1,7 +1,6 @@
 use crate::config::{Config, Profile, SwitchMode};
 use anyhow::{Context, Result};
 use glob::glob;
-use rand::Rng;
 use std::path::PathBuf;
 use tokio::process::Command;
 use tracing::info;
@@ -47,18 +46,16 @@ impl WallpaperManager {
 
         let chosen_path = match config.auto_switch.mode {
             SwitchMode::Random => {
-                // try a few times to pick a different wallpaper than last_wallpaper
-                let mut rng = rand::thread_rng();
+                // use rand::random::<u32>() % len to avoid thread_rng/gen_range deprecation warnings
                 let mut attempts = 0;
                 loop {
-                    let idx = rng.gen_range(0..wallpapers.len());
+                    let idx = (rand::random::<u32>() as usize) % wallpapers.len();
                     let cand = wallpapers[idx].clone();
                     if self.last_wallpaper.as_ref().map(|p| p != &cand).unwrap_or(true) {
                         break cand;
                     }
                     attempts += 1;
                     if attempts >= 8 {
-                        // give up and accept current candidate (rare)
                         break cand;
                     }
                 }

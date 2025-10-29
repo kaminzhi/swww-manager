@@ -80,11 +80,12 @@ impl HyprlandIPC {
     }
 }
 
+#[allow(non_snake_case, dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct Monitor {
     pub id: i32,
-    pub name: String,
-    pub description: String,
+    // pub name: String,
+    // pub description: String,
     pub make: String,
     pub model: String,
     pub serial: String,

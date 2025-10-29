@@ -1,5 +1,5 @@
 use crate::hyprland_ipc::{HyprlandIPC, Monitor as HyprMonitor};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use tracing::warn;
 
 #[derive(Clone)]
@@ -32,10 +32,10 @@ impl MonitorManager {
             Ok(monitors
                 .into_iter()
                 .filter(|m| m.dpmsStatus && m.width > 0 && m.height > 0)
-                .map(|m| m.name)
+                .map(|m| m.activeWorkspace.name.clone())
                 .collect())
         } else {
-            anyhow::bail!("Hyprland IPC not available")
+            Err(anyhow!("Hyprland IPC not available"))
         }
     }
 
@@ -47,7 +47,7 @@ impl MonitorManager {
                 .filter(|m| m.dpmsStatus && m.width > 0 && m.height > 0)
                 .collect())
         } else {
-            anyhow::bail!("Hyprland IPC not available")
+            Err(anyhow!("Hyprland IPC not available"))
         }
     }
 
@@ -57,10 +57,10 @@ impl MonitorManager {
             monitors
                 .into_iter()
                 .find(|m| m.focused)
-                .map(|m| m.name)
-                .ok_or_else(|| anyhow::anyhow!("No focused monitor found"))
+                .map(|m| m.activeWorkspace.name.clone())
+                .ok_or_else(|| anyhow!("No focused monitor found"))
         } else {
-            anyhow::bail!("Hyprland IPC not available")
+            Err(anyhow!("Hyprland IPC not available"))
         }
     }
     

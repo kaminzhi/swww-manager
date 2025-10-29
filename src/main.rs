@@ -18,7 +18,7 @@ use config::Config;
 use client::Client;
 use server::Server;
 // use hyprland_event::{monitor_events, HyprlandEvent};
-use futures::FutureExt;
+// use futures::FutureExt;
 use anyhow::Result;
 
 #[derive(Parser)]
@@ -276,9 +276,9 @@ async fn show_monitors() -> Result<()> {
     for monitor in monitors {
         println!("\n{} {}", 
             if monitor.focused { "➤" } else { " " },
-            monitor.name
+            monitor.activeWorkspace.name.clone()
         );
-        println!("  Description: {}", monitor.description);
+        println!("  Description: {} {}", monitor.make, monitor.model);
         println!("  Resolution:  {}x{} @ {:.2}Hz", 
             monitor.width, monitor.height, monitor.refreshRate);
         println!("  Position:    ({}, {})", monitor.x, monitor.y);
@@ -314,14 +314,14 @@ async fn watch_monitors() -> Result<()> {
                     );
                     
                     for monitor in &current_monitors {
-                        if !last_monitors.iter().any(|m| m.name == monitor.name) {
-                            println!("  + Added: {} ({})", monitor.name, monitor.description);
+                        if !last_monitors.iter().any(|m| m.activeWorkspace.name == monitor.activeWorkspace.name) {
+                            println!("  + Added: {} ({})", monitor.activeWorkspace.name, format!("{} {}", monitor.make, monitor.model));
                         }
                     }
                     
                     for monitor in &last_monitors {
-                        if !current_monitors.iter().any(|m| m.name == monitor.name) {
-                            println!("  - Removed: {} ({})", monitor.name, monitor.description);
+                        if !current_monitors.iter().any(|m| m.activeWorkspace.name == monitor.activeWorkspace.name) {
+                            println!("  - Removed: {} ({})", monitor.activeWorkspace.name, format!("{} {}", monitor.make, monitor.model));
                         }
                     }
                     
