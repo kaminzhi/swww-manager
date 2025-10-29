@@ -55,7 +55,7 @@ cp systemd/* ~/.config/systemd/user/
 systemctl --user daemon-reload
 swww-manager init
 systemctl --user enable --now swww-manager.socket
-systemctl --user enable --now swww-monitor.service  # optional
+
 
 # Option B: Hyprland (no systemd)
 # In ~/.config/hypr/hyprland.conf
@@ -156,12 +156,6 @@ See `config.sample.toml` for more examples.
 └────────┬────────┘
          │
          ↓
-┌─────────────────┐
-│ swww-monitor    │  Event listener
-│   .service      │  (always running)
-└────────┬────────┘
-         │
-         ↓  Trigger profile switch
 ┌─────────────────┐
 │ swww-manager    │
 │   .socket       │  Socket activation
