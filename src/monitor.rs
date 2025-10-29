@@ -7,6 +7,12 @@ pub struct MonitorManager {
     ipc: Option<HyprlandIPC>,
 }
 
+impl Default for MonitorManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MonitorManager {
     pub fn new() -> Self {
         let ipc = match HyprlandIPC::new() {

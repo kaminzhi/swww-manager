@@ -28,12 +28,12 @@ pub async fn send(title: &str, message: &str) -> Result<()> {
 }
 
 pub async fn send_error(message: &str) -> Result<()> {
-    let text = format!("{}", message);
+    let text = message.to_string();
     send_with_color(NotificationKind::Error, &text, "rgb(ff8888)", 8000).await
 }
 
 pub async fn send_success(message: &str) -> Result<()> {
-    let text = format!("{}", message);
+    let text = message.to_string();
     send_with_color(NotificationKind::Success, &text, "rgb(88ff88)", 3000).await
 }
 
@@ -54,12 +54,8 @@ pub fn send_sync(title: &str, message: &str) -> Result<()> {
     let title = title.to_owned();
     let message = message.to_owned();
 
-    tokio::runtime::Handle::try_current()
-        .ok()
-        .map(|handle| {
-            handle.spawn(async move {
+    if let Ok(handle) = tokio::runtime::Handle::try_current() { handle.spawn(async move {
                 send(&title, &message).await.ok();
-            });
-        });
+            }); }
     Ok(())
 }

@@ -133,12 +133,9 @@ impl Server {
                         if let Some(sig) = std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE") {
                             let socket = runtime_path.join("hypr").join(sig).join(".socket2.sock");
                             hypr_running = socket.exists();
-                        } else {
-                            if let Ok(mut entries) = glob::glob(&format!("{}/hypr/*/.socket2.sock", runtime_path.display())) {
-                                if entries.next().is_some() {
-                                    hypr_running = true;
-                                }
-                            }
+                        } else if let Ok(mut entries) = glob::glob(&format!("{}/hypr/*/.socket2.sock", runtime_path.display()))
+                        && entries.next().is_some() {
+                            hypr_running = true;
                         }
 
                         // Sway detection
@@ -146,12 +143,9 @@ impl Server {
                         if let Some(sway_sock) = std::env::var_os("SWAYSOCK") {
                             let sockp = Path::new(&sway_sock);
                             sway_running = sockp.exists();
-                        } else {
-                            if let Ok(mut entries) = glob::glob(&format!("{}/sway-ipc.*", runtime_path.display())) {
-                                if entries.next().is_some() {
-                                    sway_running = true;
-                                }
-                            }
+                        } else if let Ok(mut entries) = glob::glob(&format!("{}/sway-ipc.*", runtime_path.display()))
+                        && entries.next().is_some() {
+                            sway_running = true;
                         }
 
                         // If neither compositor socket is present, or initial runtime dir disappeared -> exit
@@ -270,11 +264,10 @@ impl Server {
         self.config = new_config.clone();
         self.profile_manager.update_config(new_config);
 
-        if let Ok(profile) = self.profile_manager.current_profile() {
-            if let Err(e) = self.wallpaper_manager.refresh_cache(profile) {
+        if let Ok(profile) = self.profile_manager.current_profile()
+            && let Err(e) = self.wallpaper_manager.refresh_cache(profile) {
                 warn!("Failed to refresh wallpaper cache: {}", e);
             }
-        }
 
         match self.monitor_manager.get_stable_monitors().await {
             Ok(monitors) => {
@@ -339,13 +332,12 @@ impl Server {
         match request {
             Request::Switch { profile } => {
                 // Switch profile first if specified
-                if let Some(prof) = profile {
-                    if let Err(e) = self.switch_profile(&prof).await {
+                if let Some(prof) = profile
+                    && let Err(e) = self.switch_profile(&prof).await {
                         return Response::Error { 
                             message: format!("Failed to switch profile: {}", e)
                         };
                     }
-                }
                 
                 // Then switch wallpaper
                 match self.switch_wallpaper().await {
@@ -517,11 +509,10 @@ impl Server {
                         self.profile_manager.update_config(new_config);
                         
                         // Refresh wallpaper cache
-                        if let Ok(profile) = self.profile_manager.current_profile() {
-                            if let Err(e) = self.wallpaper_manager.refresh_cache(profile) {
+                        if let Ok(profile) = self.profile_manager.current_profile()
+                            && let Err(e) = self.wallpaper_manager.refresh_cache(profile) {
                                 warn!("Failed to refresh wallpaper cache: {}", e);
                             }
-                        }
                         
                         Response::Success { 
                             message: "Configuration reloaded".to_string()

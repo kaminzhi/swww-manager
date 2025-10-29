@@ -60,12 +60,11 @@ impl Manager {
     pub async fn detect_and_switch(&mut self) -> Result<Option<String>> {
         let monitors = self.monitor_manager.get_monitors().await?;
         
-        if let Some(profile_name) = self.profile_manager.detect_profile(&monitors)? {
-            if profile_name != self.config.current_profile {
+        if let Some(profile_name) = self.profile_manager.detect_profile(&monitors)?
+            && profile_name != self.config.current_profile {
                 self.switch_profile(&profile_name).await?;
                 return Ok(Some(profile_name));
             }
-        }
         
         Ok(None)
     }

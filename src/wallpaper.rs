@@ -14,6 +14,12 @@ pub struct WallpaperManager {
     wallpaper_cache: Vec<PathBuf>,
 }
 
+impl Default for WallpaperManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WallpaperManager {
     pub fn new() -> Self {
         Self {
@@ -88,7 +94,7 @@ impl WallpaperManager {
         info!("Setting wallpaper: {}", path);
 
         let cmd = Command::new("swww")
-            .args(&[
+            .args([
                 "img",
                 path,
                 "--transition-type",

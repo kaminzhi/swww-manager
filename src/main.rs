@@ -1,4 +1,3 @@
-use tracing_subscriber;
 use tracing::Level;
 use tracing::info;
 use clap::Subcommand;
@@ -234,7 +233,7 @@ async fn run_event_monitor() -> Result<()> {
     
     monitor_events(move |event| {
         let scheduled_task = Arc::clone(&scheduled_task);
-        let debounce_delay = debounce_delay.clone();
+        let debounce_delay = debounce_delay;
         async move {
             match event {
                 HyprlandEvent::MonitorAdded { .. } | HyprlandEvent::MonitorRemoved { .. }=> {
@@ -251,11 +250,10 @@ async fn run_event_monitor() -> Result<()> {
 
                     let handle = tokio::spawn(async move {
                         tokio::time::sleep(debounce_delay).await;
-                        if let Ok(mut client) = Client::connect().await {
-                            if let Err(e) = client.detect_and_switch_profile().await {
+                        if let Ok(mut client) = Client::connect().await
+                            && let Err(e) = client.detect_and_switch_profile().await {
                                 tracing::warn!("Failed to switch profile after monitor change: {}", e);
                             }
-                        }
                     });
 
                     *scheduled_task.lock().await = Some(handle);
