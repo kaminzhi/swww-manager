@@ -1,5 +1,5 @@
 use crate::protocol::{Request, Response};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use tokio::net::UnixStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::path::PathBuf;

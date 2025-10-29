@@ -225,7 +225,7 @@ async fn run_event_monitor() -> Result<()> {
     use crate::hyprland_event::{monitor_events, HyprlandEvent};
     use futures::FutureExt;
     use std::sync::Arc;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
     use tokio::sync::Mutex;
     use tokio::task::JoinHandle;
 

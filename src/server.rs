@@ -2,7 +2,7 @@ use crate::config::Config;
 use crate::monitor::MonitorManager;
 use crate::wallpaper::WallpaperManager;
 use crate::profile::ProfileManager;
-use crate::protocol::{Request, Response, StatusInfo, ProfileInfo};
+use crate::protocol::{Request, Response, StatusInfo};
 use crate::notify;
 
 use futures::FutureExt;
