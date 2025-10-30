@@ -161,26 +161,6 @@ enable_services() {
   else
     print_warning "Failed to enable swww-manager.socket"
   fi
-
-  # Ask about monitor service
-  echo
-  read -p "Enable monitor detection service? (Y/n): " -n 1 -r
-  echo
-  if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-    if systemctl --user enable swww-monitor.service; then
-      print_success "Enabled swww-monitor.service"
-    fi
-  fi
-
-  # Ask about timer
-  echo
-  read -p "Enable auto-switch timer? (y/N): " -n 1 -r
-  echo
-  if [[ $REPLY =~ ^[Yy]$ ]]; then
-    if systemctl --user enable swww-timer.timer; then
-      print_success "Enabled swww-timer.timer"
-    fi
-  fi
 }
 
 start_services() {
@@ -191,19 +171,6 @@ start_services() {
     print_success "Started swww-manager.socket"
   fi
 
-  # Start monitor if enabled
-  if systemctl --user is-enabled swww-monitor.service &>/dev/null; then
-    if systemctl --user start swww-monitor.service; then
-      print_success "Started swww-monitor.service"
-    fi
-  fi
-
-  # Start timer if enabled
-  if systemctl --user is-enabled swww-timer.timer &>/dev/null; then
-    if systemctl --user start swww-timer.timer; then
-      print_success "Started swww-timer.timer"
-    fi
-  fi
 }
 
 # ----- Startup choices -----
@@ -212,14 +179,12 @@ choose_startup_method() {
   echo "Choose how to start swww-manager (recommended: systemd):"
   echo "  1) systemd user units (socket activation)"
   echo "  2) Hyprland exec-once"
-  echo "  3) Sway exec_always"
-  echo "  4) None (I'll configure manually)"
-  read -p "Your choice [1-4]: " -r CHOICE
+  echo "  3) None (I'll configure manually)"
+  read -p "Your choice [1-3]: " -r CHOICE
   case "$CHOICE" in
     1|"" ) START_MODE="systemd";;
     2 ) START_MODE="hyprland";;
-    3 ) START_MODE="sway";;
-    4 ) START_MODE="none";;
+    3 ) START_MODE="none";;
     * ) START_MODE="systemd";;
   esac
   print_info "Selected: $START_MODE"
@@ -232,19 +197,6 @@ Add the following lines to your ~/.config/hypr/hyprland.conf:
 
   exec-once = swww init
   exec-once = swww-manager serve
-  exec-once = swww-manager monitor-events
-
-EOT
-}
-
-print_sway_instructions() {
-  cat <<'EOT'
-
-Add the following lines to your ~/.config/sway/config:
-
-  exec_always swww init
-  exec_always swww-manager serve
-  exec_always swww-manager monitor-events
 
 EOT
 }
@@ -267,7 +219,6 @@ show_completion() {
   if [ "$START_MODE" = "systemd" ]; then
     print_info "Service management:"
     echo "  systemctl --user status swww-manager.socket"
-    echo "  systemctl --user status swww-monitor.service"
     echo "  journalctl --user -u swww-manager.service -f"
   fi
   echo
@@ -306,10 +257,6 @@ EOF
     hyprland)
       print_warning "Skipping systemd setup as requested."
       print_hyprland_instructions
-      ;;
-    sway)
-      print_warning "Skipping systemd setup as requested."
-      print_sway_instructions
       ;;
     none)
       print_warning "Skipping auto-start configuration as requested."

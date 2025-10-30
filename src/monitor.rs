@@ -33,7 +33,7 @@ impl MonitorManager {
             Ok(monitors
                 .into_iter()
                 .filter(|m| m.dpmsStatus && m.width > 0 && m.height > 0)
-                .map(|m| m.activeWorkspace.name.clone())
+                .map(|m| m.name.clone())
                 .collect())
         } else {
             Err(anyhow!("Hyprland IPC not available"))

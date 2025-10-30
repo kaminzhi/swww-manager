@@ -274,13 +274,15 @@ async fn show_monitors() -> Result<()> {
     println!("{}", "═".repeat(70));
     
     for monitor in monitors {
-        println!("\n{} {}", 
-            if monitor.focused { "➤" } else { " " },
-            monitor.activeWorkspace.name.clone()
+        let status = if monitor.dpmsStatus { "On" } else { "Off" };
+        let indicator = if monitor.focused { "➤" } else { " " };
+        println!(
+            "{} {}",
+            indicator,
+            monitor.name
         );
         println!("  Description: {} {}", monitor.make, monitor.model);
-        println!("  Resolution:  {}x{} @ {:.2}Hz", 
-            monitor.width, monitor.height, monitor.refreshRate);
+        println!("  Resolution:  {}x{} @ {:.2}Hz", monitor.width, monitor.height, monitor.refreshRate);
         println!("  Position:    ({}, {})", monitor.x, monitor.y);
         println!("  Scale:       {:.2}x", monitor.scale);
         println!("  Workspace:   {} (ID: {})", 

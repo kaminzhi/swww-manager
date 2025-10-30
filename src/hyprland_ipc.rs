@@ -86,7 +86,7 @@ impl HyprlandIPC {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Monitor {
     pub id: i32,
-    // pub name: String,
+    pub name: String,
     // pub description: String,
     pub make: String,
     pub model: String,
